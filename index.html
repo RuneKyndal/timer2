@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="HeliTimer">
+    <meta name="theme-color" content="#000000">
+    <link rel="apple-touch-icon" href="timer.png">
+    <link rel="manifest" href="manifest.json">
+    <title>HeliTimer v1.30</title>
+    <style>
+        body {
+            background: #fff; color: #000; font-family: sans-serif;
+            margin: 0; padding: 10px;
+            display: flex; flex-direction: column; align-items: center;
+            /* Prevent iOS bounce scroll in standalone mode */
+            position: fixed; width: 100%; height: 100%;
+            overflow-y: auto; -webkit-overflow-scrolling: touch;
+        }
+        .container { width: 100%; max-width: 400px; }
+        .timer-row {
+            display: grid;
+            grid-template-columns: 50px 170px 100px;
+            justify-content: center; align-items: center; gap: 10px;
+            padding: 12px 5px; border: 2px solid #000; border-radius: 10px;
+            margin-bottom: 8px; box-sizing: border-box;
+        }
+        .label { font-size: 0.85rem; font-weight: bold; }
+        .controls { display: flex; gap: 4px; }
+        button {
+            font-weight: bold; border-radius: 6px; border: 2px solid #000;
+            cursor: pointer; text-transform: uppercase;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .btn-timer { flex: 1; padding: 12px 0; font-size: 0.75rem; }
+        .btn-start { background: #00ff00; }
+        .btn-stop { background: #ff0000; color: #fff; }
+        .btn-stop:disabled { background: #600; opacity: 0.5; }
+        .btn-row-reset { background: #ccc; width: 45px; flex: none; }
+        .time-display {
+            font-family: monospace; font-size: 1.3rem; font-weight: bold;
+            text-align: left; padding-left: 5px; white-space: nowrap;
+        }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+        .stat-box {
+            background: #f0f0f0; padding: 10px; border: 2px solid #000;
+            border-radius: 10px; text-align: center;
+        }
+        .ts-info { font-size: 0.7rem; height: 2.4em; display: block; line-height: 1.2; }
+        .total-hms {
+            font-size: 1.2rem; font-family: monospace; display: block;
+            border-top: 1px solid #000; margin-top: 5px; padding-top: 5px; font-weight: bold;
+        }
+        .decimal-sub { font-size: 0.9rem; font-family: monospace; color: #444; display: block; margin-top: 2px; }
+        .action-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+        .btn-act { padding: 16px 0; color: #fff; font-size: 0.85rem; border-radius: 8px; }
+        #log-page {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%; background: #fff; z-index: 999;
+            padding: 10px; box-sizing: border-box; overflow-y: auto;
+        }
+        .log-table { width: 100%; border-collapse: collapse; font-size: 0.65rem; }
+        .log-table th, .log-table td { border: 1px solid #000; padding: 4px 2px; text-align: center; }
+        .row-total { background: #e0e0e0; font-weight: bold; }
+        .export-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 20px; }
+        .btn-export { padding: 12px 0; font-size: 0.8rem; border-radius: 8px; border: 2px solid #000; }
+
+        /* Toast — replaces alert(), works in iOS standalone mode */
+        #toast {
+            display: none; position: fixed; bottom: 30px; left: 50%;
+            transform: translateX(-50%);
+            background: #222; color: #fff;
+            padding: 10px 22px; border-radius: 10px;
+            font-size: 0.9rem; z-index: 9999;
+            white-space: nowrap; pointer-events: none;
+        }
+
+        /* Confirm dialog — replaces confirm(), works in iOS standalone mode */
+        #confirm-overlay {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55); z-index: 9998;
+            justify-content: center; align-items: center;
+        }
+        #confirm-overlay.show { display: flex; }
+        #confirm-box {
+            background: #fff; border: 2px solid #000; border-radius: 12px;
+            padding: 24px; text-align: center; width: 280px;
+        }
+        #confirm-box p { margin: 0 0 16px 0; font-weight: bold; font-size: 0.95rem; }
+        #confirm-box .btn-row { display: flex; gap: 10px; justify-content: center; }
+        #confirm-box button { padding: 10px 28px; font-size: 0.9rem; border-radius: 6px; }
+    </style>
+</head>
+<body>
+
+<div id="main-timer-page" class="container">
+    <h2 style="text-align:center; margin: 0 0 12px 0;">FLIGHT TIMER v1.30</h2>
+
+    <div class="timer-row">
+        <div class="label">ENG 1</div>
+        <div class="controls">
+            <button class="btn-timer btn-start" id="e1-start" onclick="startT('e1')">START</button>
+            <button class="btn-timer btn-stop"  id="e1-stop"  onclick="stopT('e1')"  disabled>STOP</button>
+            <button class="btn-timer btn-row-reset" onclick="resetRow('e1')">RST</button>
+        </div>
+        <div class="time-display" id="e1-disp">00:00:00</div>
+    </div>
+
+    <div class="timer-row">
+        <div class="label">ENG 2</div>
+        <div class="controls">
+            <button class="btn-timer btn-start" id="e2-start" onclick="startT('e2')">START</button>
+            <button class="btn-timer btn-stop"  id="e2-stop"  onclick="stopT('e2')"  disabled>STOP</button>
+            <button class="btn-timer btn-row-reset" onclick="resetRow('e2')">RST</button>
+        </div>
+        <div class="time-display" id="e2-disp">00:00:00</div>
+    </div>
+
+    <div class="timer-row" style="background:#eef;">
+        <div class="label">FLIGHT</div>
+        <div class="controls">
+            <button class="btn-timer btn-start" id="fl-start" onclick="startT('fl')">START</button>
+            <button class="btn-timer btn-stop"  id="fl-stop"  onclick="stopT('fl')"  disabled>STOP</button>
+            <button class="btn-timer btn-row-reset" onclick="resetRow('fl')">RST</button>
+        </div>
+        <div class="time-display" id="fl-disp">00:00:00</div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-box">
+            <span class="ts-info">ENG RUN<br><span id="e-ts">--:-- to --:--</span></span>
+            <span class="total-hms" id="e-hms">00:00:00</span>
+            <span class="decimal-sub" id="e-dec">0.00h</span>
+        </div>
+        <div class="stat-box" style="background:#eef;">
+            <span class="ts-info">FLIGHT<br><span id="f-ts">--:-- to --:--</span></span>
+            <span class="total-hms" id="f-hms">00:00:00</span>
+            <span class="decimal-sub" id="f-dec">0.00h</span>
+        </div>
+    </div>
+
+    <div class="action-row">
+        <button class="btn-act" style="background:#000;" onclick="location.reload()">RELOAD</button>
+        <button class="btn-act" style="background:#007bff;" onclick="saveLog()">SAVE</button>
+        <button class="btn-act" style="background:#666;" onclick="showLog()">LOGS</button>
+    </div>
+</div>
+
+<div id="log-page">
+    <button onclick="hideLog()" style="background:#28a745; color:#fff; width:100%; padding:18px; font-weight:bold; margin-bottom:12px; border:2px solid #000; border-radius:8px;">BACK</button>
+    <table class="log-table">
+        <thead>
+            <tr>
+                <th>Date</th><th>Eng Block</th><th>HH:MM</th><th>Eng</th>
+                <th>Flt Block</th><th>HH:MM</th><th>Flt</th>
+            </tr>
+        </thead>
+        <tbody id="log-body"></tbody>
+    </table>
+    <div class="export-row">
+        <button class="btn-export" onclick="exportData('csv')" style="background:#217346; color:#fff;">SAVE .CSV</button>
+        <button class="btn-export" onclick="exportData('txt')" style="background:#444; color:#fff;">SAVE .TXT</button>
+    </div>
+    <button onclick="confirmClear()" style="background:#dc3545; color:#fff; width:100%; padding:10px; margin-top:25px; border-radius:8px; border:2px solid #000;">DELETE ALL</button>
+</div>
+
+<!-- Toast (replaces alert) -->
+<div id="toast"></div>
+
+<!-- Custom confirm dialog (replaces confirm()) -->
+<div id="confirm-overlay">
+    <div id="confirm-box">
+        <p id="confirm-msg">Are you sure?</p>
+        <div class="btn-row">
+            <button onclick="confirmResult(true)"  style="background:#dc3545; color:#fff; border:2px solid #000;">DELETE</button>
+            <button onclick="confirmResult(false)" style="background:#ccc; border:2px solid #000;">CANCEL</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ── Service Worker ────────────────────────────────────────────────────────
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js', { scope: './' })
+                .then(r => console.log('SW registered:', r.scope))
+                .catch(e => console.warn('SW failed:', e));
+        });
+    }
+
+    // ── Toast (replaces alert) ────────────────────────────────────────────────
+    function showToast(msg, duration) {
+        duration = duration || 2500;
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.display = 'block';
+        setTimeout(function() { t.style.display = 'none'; }, duration);
+    }
+
+    // ── Custom confirm (replaces confirm()) ───────────────────────────────────
+    let confirmCallback = null;
+    function showConfirm(msg, callback) {
+        document.getElementById('confirm-msg').textContent = msg;
+        document.getElementById('confirm-overlay').classList.add('show');
+        confirmCallback = callback;
+    }
+    function confirmResult(yes) {
+        document.getElementById('confirm-overlay').classList.remove('show');
+        if (confirmCallback) confirmCallback(yes);
+        confirmCallback = null;
+    }
+
+    // ── Timer state ───────────────────────────────────────────────────────────
+    var timers = {
+        e1: { elapsed:0, start:null, interval:null, running:false },
+        e2: { elapsed:0, start:null, interval:null, running:false },
+        fl: { elapsed:0, start:null, interval:null, running:false, tsS:null, tsE:null },
+        engGlobal: { start:null, end:null }
+    };
+
+    function getTimeStr(d) {
+        var date = d ? new Date(d) : new Date();
+        return date.toTimeString().split(' ')[0].substring(0, 5);
+    }
+    function format(ms) {
+        var s = Math.floor(ms / 1000), h = Math.floor(s / 3600),
+            m = Math.floor((s % 3600) / 60), sec = s % 60;
+        return [h, m, sec].map(function(v){ return v.toString().padStart(2,'0'); }).join(':');
+    }
+    function formatShort(ms) {
+        var s = Math.floor(ms / 1000), h = Math.floor(s / 3600),
+            m = Math.floor((s % 3600) / 60);
+        return [h, m].map(function(v){ return v.toString().padStart(2,'0'); }).join(':');
+    }
+
+    function updateStats() {
+        var engMs = (timers.engGlobal.end || (timers.engGlobal.start ? Date.now() : timers.engGlobal.start)) - timers.engGlobal.start || 0;
+        document.getElementById('e-hms').innerText = format(engMs);
+        document.getElementById('e-dec').innerText = (engMs / 3600000).toFixed(2) + "h";
+        document.getElementById('e-ts').innerText =
+            (timers.engGlobal.start ? getTimeStr(timers.engGlobal.start) : "--:--") +
+            " to " +
+            (timers.engGlobal.end ? getTimeStr(timers.engGlobal.end) : "--:--");
+        document.getElementById('f-hms').innerText = format(timers.fl.elapsed);
+        document.getElementById('f-dec').innerText = (timers.fl.elapsed / 3600000).toFixed(2) + "h";
+        document.getElementById('f-ts').innerText = (timers.fl.tsS || "--:--") + " to " + (timers.fl.tsE || "--:--");
+    }
+
+    function startT(id) {
+        timers[id].running = true;
+        timers[id].start = Date.now() - timers[id].elapsed;
+        if (id === 'fl' && !timers.fl.tsS) timers.fl.tsS = getTimeStr();
+        if ((id === 'e1' || id === 'e2') && !timers.engGlobal.start) timers.engGlobal.start = Date.now();
+        timers[id].interval = setInterval(function() {
+            timers[id].elapsed = Date.now() - timers[id].start;
+            document.getElementById(id + '-disp').innerText = format(timers[id].elapsed);
+            updateStats();
+        }, 1000);
+        document.getElementById(id + '-start').disabled = true;
+        document.getElementById(id + '-stop').disabled = false;
+    }
+
+    function stopT(id) {
+        timers[id].running = false;
+        clearInterval(timers[id].interval);
+        if (id === 'fl') timers.fl.tsE = getTimeStr();
+        if ((id === 'e1' || id === 'e2') && !timers.e1.running && !timers.e2.running)
+            timers.engGlobal.end = Date.now();
+        document.getElementById(id + '-start').disabled = false;
+        document.getElementById(id + '-stop').disabled = true;
+        updateStats();
+    }
+
+    function resetRow(id) {
+        stopT(id);
+        timers[id].elapsed = 0;
+        document.getElementById(id + '-disp').innerText = "00:00:00";
+        if (id === 'fl') { timers.fl.tsS = null; timers.fl.tsE = null; }
+        if (id !== 'fl' && !timers.e1.running && !timers.e2.running) {
+            timers.engGlobal.start = null; timers.engGlobal.end = null;
+        }
+        updateStats();
+    }
+
+    function saveLog() {
+        var engMs = (timers.engGlobal.end || (timers.engGlobal.start ? Date.now() : timers.engGlobal.start)) - timers.engGlobal.start || 0;
+        var entry = {
+            date: new Date().toLocaleDateString(),
+            eb:   document.getElementById('e-ts').innerText,
+            ehms: formatShort(engMs),
+            eh:   (engMs / 3600000).toFixed(2),
+            fb:   document.getElementById('f-ts').innerText,
+            fhms: formatShort(timers.fl.elapsed),
+            fh:   (timers.fl.elapsed / 3600000).toFixed(2)
+        };
+        var log = JSON.parse(localStorage.getItem('hLogV130') || '[]');
+        log.push(entry);
+        localStorage.setItem('hLogV130', JSON.stringify(log));
+        showToast("✓ Flight Saved");
+    }
+
+    function showLog() {
+        document.getElementById('main-timer-page').style.display = 'none';
+        document.getElementById('log-page').style.display = 'block';
+        var log = JSON.parse(localStorage.getItem('hLogV130') || '[]').reverse();
+        var tbody = document.getElementById('log-body');
+        tbody.innerHTML = '';
+        if (log.length === 0) { tbody.innerHTML = '<tr><td colspan="7">No logs yet.</td></tr>'; return; }
+        var currentDayHtml = "", dailyEngTotal = 0, dailyFltTotal = 0, lastDate = log[0].date;
+        log.forEach(function(entry, index) {
+            if (entry.date !== lastDate) {
+                tbody.innerHTML += currentDayHtml + '<tr class="row-total"><td colspan="3">TOTAL ' + lastDate + '</td><td>' + dailyEngTotal.toFixed(2) + '</td><td colspan="2"></td><td>' + dailyFltTotal.toFixed(2) + '</td></tr>';
+                currentDayHtml = ""; dailyEngTotal = 0; dailyFltTotal = 0; lastDate = entry.date;
+            }
+            currentDayHtml += '<tr><td>' + entry.date + '</td><td>' + entry.eb + '</td><td>' + entry.ehms + '</td><td>' + entry.eh + '</td><td>' + entry.fb + '</td><td>' + entry.fhms + '</td><td>' + entry.fh + '</td></tr>';
+            dailyEngTotal += parseFloat(entry.eh);
+            dailyFltTotal += parseFloat(entry.fh);
+            if (index === log.length - 1) {
+                tbody.innerHTML += currentDayHtml + '<tr class="row-total"><td colspan="3">TOTAL ' + lastDate + '</td><td>' + dailyEngTotal.toFixed(2) + '</td><td colspan="2"></td><td>' + dailyFltTotal.toFixed(2) + '</td></tr>';
+            }
+        });
+    }
+
+    function hideLog() {
+        document.getElementById('log-page').style.display = 'none';
+        document.getElementById('main-timer-page').style.display = 'block';
+    }
+
+    function confirmClear() {
+        showConfirm("Delete ALL logs? This cannot be undone.", function(yes) {
+            if (yes) {
+                localStorage.removeItem('hLogV130');
+                showLog();
+                showToast("All logs deleted");
+            }
+        });
+    }
+
+    function exportData(formatType) {
+        var log = JSON.parse(localStorage.getItem('hLogV130') || '[]');
+        if (log.length === 0) { showToast("No logs found."); return; }
+        var content = "", ext = "", mime = "";
+        if (formatType === 'csv') {
+            content = "Date,Eng Block,Eng HHMM,Eng Dec,Flt Block,Flt HHMM,Flt Dec\n" +
+                log.map(function(e){ return e.date + ',' + e.eb + ',' + e.ehms + ',' + e.eh + ',' + e.fb + ',' + e.fhms + ',' + e.fh; }).join('\n');
+            ext = ".csv"; mime = "text/csv";
+        } else {
+            content = "HELI FLIGHT LOG EXPORT v1.30\n" +
+                log.map(function(e){ return "DATE: " + e.date + " | ENG: " + e.eb + " [" + e.ehms + "] (" + e.eh + "h) | FLT: " + e.fb + " [" + e.fhms + "] (" + e.fh + "h)"; }).join('\n');
+            ext = ".txt"; mime = "text/plain";
+        }
+        var blob = new Blob([content], { type: mime });
+        var url  = URL.createObjectURL(blob);
+        var a    = document.createElement('a');
+        a.href = url; a.download = "HeliLog_" + new Date().toISOString().split('T')[0] + ext;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+</script>
+</body>
+</html>
