@@ -1,6 +1,6 @@
 {
-    "name": "HeliTimer",
-    "short_name": "HeliTimer",
+    "name": "HeliTimer2",
+    "short_name": "HeliTimer2",
     "description": "Helicopter flight and engine time logger",
     "start_url": "./index.html",
     "scope": "./",
